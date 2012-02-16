@@ -18,7 +18,7 @@ Lindenmayer Systems are recursive, self-rewriting grammars which can approximate
 growth patterns observed in nature, most commonly known for the branching
 structures in plants and trees. The grammars generate strings which can be
 interpreted as part of a sophisticated Logo/Turtle-graphics command, generating
-2 and 3-dimensional images in the process. T
+2 and 3-dimensional images in the process.
 
 
 Example
