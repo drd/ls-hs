@@ -78,3 +78,9 @@ ghc, and have successfully run some example programs from the nehe-tuts
 package. Since I've actually worked with the NeHe examples before in C, I have
 a decent starting point on which to map my understanding into Haskell.
 
+
+Sources
+-------
+
+1. http://en.wikipedia.org/wiki/L-system was helpful in reminding the specific
+details of the grammar tuple.
