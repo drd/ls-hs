@@ -104,56 +104,7 @@ generate  lg n           = produce (axiom lg) n
               | otherwise    = applicableProduction s ps
 
 
--- TODO:
--- - make x,y a point
--- use pattern matching on children to destructure state into components
--- make a helper function to wrap actions & eliminate boilerplate
--- make theta/heading radians
--- actually move in the direction of heading
 
-
-data TurtleState = S {
-      x, y, theta, heading :: Float
-    } deriving Show
-
-
-initialState       :: Float -> [TurtleState]
-initialState theta  = [ S 0 0 theta 90 ]
-
-up   :: TurtleState -> IO TurtleState
-up s  = return s
-
-forward        :: [TurtleState] -> [TurtleState]
-forward (s:ss)  = (S (x s + 1) (y s) (theta s) (heading s)) : ss
-
-rotatePos         :: [TurtleState] -> [TurtleState]
-rotatePos (s:ss)   = (S (x s) (y s) (theta s) (theta s + heading s)) : ss
-
-rotateNeg         :: [TurtleState] -> [TurtleState]
-rotateNeg (s:ss)   = (S (x s) (y s) (theta s) (heading s - theta s)) : ss
-
-push        :: [TurtleState] -> [TurtleState]
-push (s:ss)  = (S (x s) (y s) (theta s) (heading s)) : s : ss
-
-pop        :: [TurtleState] -> [TurtleState]
-pop (s:ss)  = ss
-
-actOn     :: Char -> IO [TurtleState] -> IO [TurtleState]
-actOn c s  = do states <- s
-                let s' = case c of
-                           'F' -> forward states
-                           '+' -> rotatePos states
-                           '-' -> rotateNeg states
-                           '[' -> push states
-                           ']' -> pop states
-                return s'
-
-
-interpret         :: String -> Float -> IO [TurtleState]
-interpret s theta  = interpret' s (return $ initialState theta)
-    where interpret' [] state     = state
-          interpret' (x:xs) state = return (actOn x state)
-                                    >>= interpret' xs
 
 {-
 foldr (\c s -> >>=) state (\c -> actOn c state)
