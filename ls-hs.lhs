@@ -5,6 +5,7 @@
 > import Graphics.Rendering.OpenGL.Raw
 > import Graphics.Rendering.GLU.Raw ( gluPerspective )
 > import Data.Bits ( (.|.) )
+> import Data.IORef ( IORef, newIORef, readIORef, writeIORef )
 > import System.Exit ( exitWith, ExitCode(..) )
 > import Control.Monad ( forever )
 
@@ -95,11 +96,25 @@ Turtle Graphics
 ===============
 
 The Turtle is represented as a list of TurtleState's, called a TurtleStack,
-each of which contains the current x,y position, a default theta for modification
+each of which contains the current x,y,z position, and
 of the heading, its current direction.
 
+> type Scalar = GLfloat
+> type Point = (Scalar, Scalar, Scalar)
+> type Color = Point
+> type Heading = (Point, Point, Point)
+
+> data Pen = Pen {
+>       theta  :: Scalar,
+>       width  :: Scalar,
+>       color  :: Int,
+>       colors :: [Color]
+>       } deriving Show
+
 > data TurtleState = S {
->       x, y, theta, heading :: GLfloat
+>       position :: Point,
+>       heading  :: Heading,
+>       pen      :: Pen
 >     } deriving Show
 
 > type TurtleStack = [TurtleState]
@@ -107,15 +122,23 @@ of the heading, its current direction.
 
 A simple helper function converts degrees to radians:
 
-> d2r    :: GLfloat -> GLfloat
+> d2r    :: Scalar -> Scalar
 > d2r d   = (d/180 * pi)
 
 
 initialState is used to generate the original stack containing a
 turtle at the origin, headed north.
 
-> initialState       :: GLfloat -> TurtleStack
-> initialState theta  = [ S 0 0 (d2r theta) (d2r 90) ]
+> initialState      :: Scalar -> Scalar -> TurtleStack
+> initialState th w  = [ S ( 0, 0, 0 )
+>                          (( 0, 1, 0 ),
+>                           ( 1, 0, 0 ),
+>                           ( 0, 0, 1 ))
+>                          (Pen (d2r th) w 0 [(0.53, 0.50, 0.40),
+>                                             (0.15, 0.80, 0.25),
+>                                             (0.05, 0.60, 0.05),
+>                                             (0.20, 0.70, 0.15),
+>                                             (0.10, 0.90, 0.20)]) ]
 
 
 Turtle movement / manipulation functions
@@ -124,38 +147,95 @@ Turtle movement / manipulation functions
 These functions actually implement the movement of the turtle through
 space, as directed by the commands generated in the L-Grammars.
 
-> w = 20
-> l = 0.5
+> delta :: Scalar
+> delta = 7
 
-> forward                     :: TurtleStack -> IO TurtleStack
-> forward ((S x y t h):ss)     = do
->
->   glBegin gl_QUADS
->   glVertex3f (x  + ddx) (y  - ddy) 0
->   glVertex3f (x  - ddx) (y  + ddy) 0
->   glVertex3f (x' - ddx) (y' + ddy) 0
->   glVertex3f (x' + ddx) (y' - ddy) 0
->   glEnd
->
->   return ((S x' y' t h) : ss)
->     where x'  = x + dx
->           y'  = y + dy
->           dx  = l * cos h
->           dy  = l * sin h
->           ddx = -dy / w  -- ddx and ddy are currently used to
->           ddy = -dx / w  -- add width to the lines
+> matMult :: Heading -> Heading -> Heading
+> ((a1, b1, c1),
+>  (d1, e1, f1),
+>  (g1, h1, i1)) `matMult`
+>  ((a2, b2, c2),
+>   (d2, e2, f2),
+>   (g2, h2, i2)) =
+>     (((a1*a2 + b1*d2 + c1*g2), (a1*b2 + b1*e2 + c1*h2), (a1*c2 + b1*f2 + c1*i2)),
+>      ((d1*a2 + e1*d2 + f1*g2), (d1*b2 + e1*e2 + f1*h2), (d1*c2 + e1*f2 + f1*i2)),
+>      ((g1*a2 + h1*d2 + i1*g2), (g1*b2 + h1*e2 + i1*h2), (g1*c2 + h1*f2 + i1*i2)))
 
-> rotatePos                   :: TurtleStack -> IO TurtleStack
-> rotatePos ((S x y t h):ss)   = return ((S x y t (h + t)) : ss)
+> rU       :: Scalar -> Heading
+> rU alpha  = ((  cos alpha, sin alpha, 0),
+>              ( -sin alpha, cos alpha, 0),
+>              (          0,         0, 1)) :: Heading
 
-> rotateNeg                   :: TurtleStack -> IO TurtleStack
-> rotateNeg ((S x y t h):ss)   = return ((S x y t (h - t)) : ss)
 
-> push                        :: TurtleStack -> IO TurtleStack
-> push ss'@((S x y t h):ss)    = return ((S x y t h) : ss')
+> rL       :: Scalar -> Heading
+> rL alpha  = (( cos alpha, 0, -sin alpha),
+>              ( 0,         1,          0),
+>              ( sin alpha, 0,  cos alpha)) :: Heading
 
-> pop                         :: TurtleStack -> IO TurtleStack
-> pop (s:ss)                   = return ss
+
+> rH       :: Scalar -> Heading
+> rH alpha  = (( 1,         0,          0),
+>              ( 0, cos alpha, -sin alpha),
+>              ( 0, sin alpha,  cos alpha)) :: Heading
+
+> forward                              :: Bool -> TurtleStack -> IO TurtleStack
+> forward line ((S (x, y, z) ((hx, hy, hz), l, u) p):ss) = do
+>   if line
+>     then
+>       glBegin gl_QUADS >>
+>       glVertex3f (x  + ddx) (y  - ddy) z  >>
+>       glVertex3f (x  - ddx) (y  + ddy) z  >>
+>       glVertex3f (x' - ddx) (y' + ddy) z' >>
+>       glVertex3f (x' + ddx) (y' - ddy) z' >>
+>       glEnd
+>     else
+>       glVertex3f x' y' z'
+>   return ((S (x', y', z') ((hx, hy, hz), l, u) p) : ss)
+>     where x'  = x + hx * delta
+>           y'  = y + hy * delta
+>           z'  = z + hz * delta
+>           ddx = -hy / w      -- ddx and ddy are currently used to give the lines
+>           ddy = -hx / w      -- some width, until I figure out gluCylinder
+>           w   = width p
+
+> rotateX                              :: Scalar -> TurtleStack -> IO TurtleStack
+> rotateX theta ((S pos head p):ss)     = return $ (S pos ((rU theta) `matMult` head) p):ss
+
+> rotateY                              :: Scalar -> TurtleStack -> IO TurtleStack
+> rotateY theta ((S pos head p):ss)     = return $ (S pos ((rL theta) `matMult` head) p):ss
+
+> rotateZ                              :: Scalar -> TurtleStack -> IO TurtleStack
+> rotateZ theta ((S pos head p):ss)     = return $ (S pos ((rH theta) `matMult` head) p):ss
+
+> turnAround                           :: TurtleStack -> IO TurtleStack
+> turnAround ((S pos head p):ss)        = return $ (S pos (rU (d2r 180) `matMult` head) p):ss
+
+> push                                 :: TurtleStack -> IO TurtleStack
+> push ss'@((S pos head p):ss)          = return $ (S pos head p) : ss'
+
+> pop                                  :: TurtleStack -> IO TurtleStack
+> pop (s:ss)                            = return ss
+
+> decrWidth                            :: TurtleStack -> IO TurtleStack
+> decrWidth ((S pos head (Pen t w c cs)):ss)
+>                                       = return $ (S pos head (Pen t (w*0.95) c cs)):ss
+
+> setColor           :: Color -> IO ()
+> setColor (r, g, b)  = do
+>   glColor3f r g b
+
+> nextColor ((S pos head (Pen t w c cs)):ss) = do
+>   let c' = (c + 1) `rem` (length cs)
+>   setColor (cs !! c')
+>   return $ (S pos head (Pen t (w*0.95) c' cs)):ss
+
+> polyBegin                            :: TurtleStack -> IO TurtleStack
+> polyBegin ss                          = do
+>   glBegin gl_POLYGON >> return ss
+
+> polyEnd                              :: TurtleStack -> IO TurtleStack
+> polyEnd ss                            = do
+>   glEnd >> return ss
 
 
 actOn is the dispatcher for incoming turtle commands. To add new
@@ -168,12 +248,24 @@ TurtleStack, in addition to performing any drawing actions.
 > actOn     :: Char -> IO TurtleStack -> IO TurtleStack
 > actOn c s  = do states <- s
 >                 let states' = case c of
->                            'F' -> forward   states
->                            '+' -> rotatePos states
->                            '-' -> rotateNeg states
->                            '[' -> push      states
->                            ']' -> pop       states
+>                            'F'  -> forward True  states
+>                            'f'  -> forward False states
+>                            '+'  -> rotateX (theta' states) states
+>                            '-'  -> rotateX (-theta' states) states
+>                            '&'  -> rotateY (theta' states) states
+>                            '^'  -> rotateY (-theta' states) states
+>                            '\\' -> rotateZ (theta' states) states
+>                            '/'  -> rotateZ (theta' states) states
+>                            '|'  -> turnAround states
+>                            '['  -> push      states
+>                            ']'  -> pop       states
+>                            '!'  -> decrWidth states
+>                            '{'  -> polyBegin states
+>                            '}'  -> polyEnd   states
+>                            '\'' -> nextColor states
+>                            _    -> return    states
 >                 states'
+>              where theta' ss = (theta . pen . head) ss
 
 
 interpret takes a String generated from an LGrammar, as well as
@@ -182,7 +274,7 @@ theta by which to modify the turtle's heading) and using actOn
 to modify the initialState accordingly.
 
 > interpret         :: String -> GLfloat -> IO [TurtleState]
-> interpret s theta  = interpret' s (return $ initialState theta)
+> interpret s th     = interpret' s (return $ initialState th 3)
 >     where interpret' [] state     = state
 >           interpret' (x:xs) state = return (actOn x state)
 >                                     >>= interpret' xs
@@ -197,7 +289,8 @@ They have been modified and extended slightly to fit my purposes here.
 
 
 > setupGraphics              :: Int -> Int -> IO ()
-> setupGraphics width height  = do
+> setupGraphics w h = do
+>   r <- newIORef 0
 >   True <- GLFW.initialize
 >   -- select type of display mode:
 >   -- Double buffer
@@ -205,15 +298,15 @@ They have been modified and extended slightly to fit my purposes here.
 >   -- Alpha components supported
 >   -- Depth buffer
 >   let dspOpts = GLFW.defaultDisplayOptions
->                 -- get a 800 x 600 window
->                 { GLFW.displayOptions_width  = width
->                 , GLFW.displayOptions_height = height
+>                 { GLFW.displayOptions_width  = w
+>                 , GLFW.displayOptions_height = h
 >                 -- Set depth buffering and RGBA colors
 >                 , GLFW.displayOptions_numRedBits   = 8
 >                 , GLFW.displayOptions_numGreenBits = 8
 >                 , GLFW.displayOptions_numBlueBits  = 8
 >                 , GLFW.displayOptions_numAlphaBits = 8
->                 , GLFW.displayOptions_numDepthBits = 1
+>                 , GLFW.displayOptions_numDepthBits = 8
+>                 , GLFW.displayOptions_numFsaaSamples = Just 8
 >                 -- , GLFW.displayOptions_displayMode = GLFW.Fullscreen
 >                 }
 >   -- open a window
@@ -222,7 +315,7 @@ They have been modified and extended slightly to fit my purposes here.
 >   GLFW.setWindowPosition 0 0
 >   GLFW.setWindowTitle "ls-hs"
 >   -- register the function to do all our OpenGL drawing
->   GLFW.setWindowRefreshCallback drawScene
+>   GLFW.setWindowRefreshCallback (drawScene r)
 >   -- GLFW.setWindowRefreshCallback (drawScene rt rq)
 >   -- register the funciton called when our window is resized
 >   GLFW.setWindowSizeCallback resizeScene
@@ -232,7 +325,7 @@ They have been modified and extended slightly to fit my purposes here.
 >   -- initialize our window.
 >   initGL
 >   forever $ do
->     drawScene
+>     drawScene r
 >     GLFW.swapBuffers
 
 
@@ -254,14 +347,23 @@ They have been modified and extended slightly to fit my purposes here.
 >   glFlush
 
 
-> drawScene :: IO ()
-> drawScene = do
+> bush :: LGrammar
+> bush  = (Lg "A"
+>          [Pr "A" "[&FL!A]/////'[&FL!A]///////'[&FL!A]",
+>           Pr "F" "S ///// F",
+>           Pr "S" "F L",
+>           Pr "L" "['''^^{-f+f+f-|-f+f+f}]"])
+
+> drawScene :: IORef Scalar -> IO ()
+> drawScene rtheta = do
 >   glClear $ fromIntegral  $  gl_COLOR_BUFFER_BIT
 >                          .|. gl_DEPTH_BUFFER_BIT
 >   glLoadIdentity
->   glTranslatef (20) (20) (-80)
->   interpret (generate (Lg "F-F-F-F"
->                        [Pr "F" "FF-F-F-F-F-F+F"]) 3) 90
+>   th <- readIORef rtheta
+>   glTranslatef (0) (-140) (-150)
+>   glRotatef th 0 1 0
+>   _ <- interpret (generate bush 7) 22.5
+>   writeIORef rtheta $! th + 0.5
 >   glFlush
 
 
@@ -277,11 +379,11 @@ They have been modified and extended slightly to fit my purposes here.
 
 > resizeScene :: GLFW.WindowSizeCallback
 > resizeScene w     0      = resizeScene w 1 -- prevent divide by zero
-> resizeScene width height = do
->   glViewport 0 0 (fromIntegral width) (fromIntegral height)
+> resizeScene w h = do
+>   glViewport 0 0 (fromIntegral w) (fromIntegral h)
 >   glMatrixMode gl_PROJECTION
 >   glLoadIdentity
->   gluPerspective 45 (fromIntegral width/fromIntegral height) 0.1 100
+>   gluPerspective 120 (fromIntegral w / fromIntegral h) 0.01 200
 >   glMatrixMode gl_MODELVIEW
 >   glLoadIdentity
 >   glFlush
@@ -301,4 +403,4 @@ They have been modified and extended slightly to fit my purposes here.
 
 > main :: IO ()
 > main = do
->   setupGraphics 800 600
+>   setupGraphics 1000 750
