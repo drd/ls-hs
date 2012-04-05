@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Ls-hs : 3D L-Systems in Haskell drawn with OpenGL" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Ls-hs</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/drd/ls-hs">Fork Me on GitHub</a>
+
+          <h1 id="project_title">Ls-hs</h1>
+          <h2 id="project_tagline">3D L-Systems in Haskell drawn with OpenGL</h2>
+
+          <section id="downloads">
+            <a class="zip_download_link" href="https://github.com/drd/ls-hs/zipball/master">Download this project as a .zip file</a>
+            <a class="tar_download_link" href="https://github.com/drd/ls-hs/tarball/master">Download this project as a tar.gz file</a>
+          </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>3-Dimensional Lindenmayer Systems in Haskell</h1>
+
+<h2>Overview</h2>
+
+<p>Lindenmayer Systems are recursive, self-rewriting grammars which can approximate
+growth patterns observed in nature, most commonly known for the branching
+structures in plants and trees. The grammars generate strings which can be
+interpreted as part of a sophisticated Logo/Turtle-graphics command, generating
+2 and 3-dimensional images in the process.</p>
+
+<h2>Example</h2>
+
+<p>A Lindenmayer grammar (L-Grammar) is a 3-tuple composed of the alphabet, the
+start or initial string, and a list of productions. To produce the 2nd iteration
+of an L-grammar, one walks the start string, replacing each existing character
+with a matching production rule, or itself if no productions match, into a new
+string. To illustrate:</p>
+
+<h3>Grammar:</h3>
+
+<pre><code>| alphabet = { F + - }
+| start = F + F + F
+| productions:
+|   F -&gt; F + F - F + F
+</code></pre>
+
+<h3>Iterations (parenthesis added for some clarity):</h3>
+
+<pre><code>1 : F+F+F
+2 : (F+F-F+F)+(F+F-F+F)+(F+F-F+F)
+3 : ( (F+F-F+F) + (F+F-F+F) - (F+F-F+F) + (F+F-F+F) ) + ( (F+F-F+F) + (F+F-F+F)
+    - (F+F-F+F)) + (F+F-F+F) ) + ( (F+F-F+F) + (F+F-F+F) - (F+F-F+F) + (F+F-F+F) )
+4 : ...
+</code></pre>
+
+<p>To interpret these strings, we need some additional information:</p>
+
+<h2>Commands:</h2>
+
+<pre><code>| F : from the current point, draw a line of d pixels
+| + : rotate the turtle theta degrees clockwise
+| - : rotate the turtle theta degrees anticlockwise
+</code></pre>
+
+<h2>Parameters:</h2>
+
+<pre><code>| theta : 60deg
+| d     : 50px
+</code></pre>
+
+<h1>LGrammar Implementation</h1>
+
+<p>An LGrammar is simply an axiom and a list of Producions, each of which
+is a predecessor and a successor String. Again, to implement either
+parametric or context-sensitive productions, I would change at least
+the type of the predecessor, and likely the type of the successor, to
+a more structured datatype. I also considered a more functional
+representation, along the lines of the Image combinators presented in
+class. I believe they would work particularly well with Parsec, as
+each production could be built up by composing functions, if I were
+to add support for an external file format.</p>
+
+<div class="highlight">
+<pre><span class="o">&gt;</span> <span class="kr">data</span> <span class="kt">Production</span> <span class="ow">=</span> <span class="kt">Pr</span> <span class="p">{</span> <span class="n">pre</span><span class="p">,</span> <span class="n">suc</span>  <span class="ow">::</span> <span class="kt">String</span> <span class="p">}</span>
+<span class="o">&gt;</span>                   <span class="kr">deriving</span> <span class="kt">Show</span>
+
+<span class="o">&gt;</span> <span class="kr">data</span> <span class="kt">LGrammar</span>   <span class="ow">=</span> <span class="kt">Lg</span> <span class="p">{</span> <span class="n">axiom</span>       <span class="ow">::</span> <span class="kt">String</span><span class="p">,</span>
+<span class="o">&gt;</span>                        <span class="n">productions</span> <span class="ow">::</span> <span class="p">[</span><span class="kt">Production</span><span class="p">]</span> <span class="p">}</span>
+<span class="o">&gt;</span>                   <span class="kr">deriving</span> <span class="kt">Show</span>
+</pre>
+</div>
+
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Ls-hs maintained by <a href="https://github.com/drd">drd</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
